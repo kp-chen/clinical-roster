@@ -12,19 +12,18 @@ Flask web app for creating medical staff rosters based on leave schedules and cl
 - Development: Ubuntu WSL, VS Code
 
 ## Project Structure
-clinical-roster/
-├── app.py              # Main Flask application
-├── templates/          # Jinja2 HTML templates
-│   ├── base.html      # Base template with common styling
-│   ├── index.html     # Home page
-│   ├── upload.html    # Leave schedule upload
-│   ├── configure_rules.html  # Rules configuration
-│   └── roster.html    # Display generated roster
-├── uploads/           # Temporary file storage (gitignored)
-├── static/            # CSS/JS files (to be created)
-├── requirements.txt   # Python dependencies
-├── CLAUDE.md         # This file
-└── README.md         # User documentation
+- app.py: Main Flask application
+- templates/: Jinja2 HTML templates
+  - base.html: Base template with common styling
+  - index.html: Home page
+  - upload.html: Leave schedule upload
+  - configure_rules.html: Rules configuration
+  - roster.html: Display generated roster
+- uploads/: Temporary file storage (gitignored)
+- static/: CSS/JS files (to be created)
+- requirements.txt: Python dependencies
+- CLAUDE.md: This file
+- README.md: User documentation
 
 ## Current Features
 1. File upload (Excel/CSV) for leave schedules
@@ -55,5 +54,39 @@ clinical-roster/
 - Use datetime for all date operations
 - Comment complex logic
 
+## Development Workflow
+- Activate environment: source venv/bin/activate
+- Run application: python app.py
+- Install new packages: pip install package_name && pip freeze > requirements.txt
+- Git workflow: add, commit with descriptive message, push to origin main
 
+## Expected Data Format
+Leave schedule should contain:
+- Staff_Name: Doctor's name
+- Specialty: Clinical specialty  
+- Leave_Start: Start date (YYYY-MM-DD)
+- Leave_End: End date (YYYY-MM-DD)
+- Leave_Type: Optional leave category
 
+## Current Implementation Status
+- DONE: Basic Flask setup with templates
+- DONE: File upload functionality
+- DONE: Preview uploaded data
+- DONE: Column mapping interface
+- IN PROGRESS: Roster generation logic
+- TODO: Database storage
+- TODO: Export functionality
+- TODO: Advanced rules engine
+
+## Architecture Decisions
+- Using Flask for simplicity and quick development
+- Pandas for data manipulation (medical staff familiar with Excel-like operations)
+- SQLite for local storage (can migrate to PostgreSQL for production)
+- Server-side rendering with Jinja2 (no frontend framework needed initially)
+
+## Notes for Future Development
+- Consider adding API endpoints for integration with hospital systems
+- May need to handle multiple departments/wards separately
+- Consider shift patterns (day/night/on-call)
+- Holiday and weekend weighting for fairness
+- Integration with existing HR systems via CSV/API
