@@ -3,29 +3,42 @@
 {% block content %}
 <h2>Generated Roster</h2>
 
-{% if roster_config %}
+{% if rules %}
 <div style="background: #f5f5f5; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
     <h3>Roster Configuration</h3>
-    <p><strong>File:</strong> {{ roster_config.filename }}</p>
-    <p><strong>Period:</strong> {{ roster_config.start_date }} to {{ roster_config.end_date }}</p>
-    <p><strong>Minimum Staff per Day:</strong> {{ roster_config.min_staff }}</p>
-    {% if roster_config.specialty_column %}
-    <p><strong>Specialty Column:</strong> {{ roster_config.specialty_column }}</p>
+    <p><strong>File:</strong> {{ filename }}</p>
+    <p><strong>Period:</strong> {{ rules.roster_start }} to {{ rules.roster_end }}</p>
+    <p><strong>Minimum Staff per Day:</strong> {{ rules.min_staff_per_day }}</p>
+    {% if rules.specialty_column %}
+    <p><strong>Specialty Column:</strong> {{ rules.specialty_column }}</p>
     {% endif %}
 </div>
 {% endif %}
 
-{% if summary %}
+{% if stats %}
 <div style="background: #e8f5e8; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
     <h3>Summary Statistics</h3>
-    <p><strong>Total Days:</strong> {{ summary.total_days }}</p>
-    <p><strong>Coverage Rate:</strong> {{ summary.coverage_rate }}%</p>
-    <p><strong>Days with Shortages:</strong> {{ summary.shortage_days }}</p>
-    <p><strong>Total Staff Shortages:</strong> {{ summary.total_shortages }}</p>
+    <p><strong>Total Days:</strong> {{ stats.total_days }}</p>
+    <p><strong>Coverage Rate:</strong> {{ "%.1f"|format(stats.coverage_percentage) }}%</p>
+    <p><strong>Days Understaffed:</strong> {{ stats.days_understaffed }}</p>
+    <p><strong>Total Specialties:</strong> {{ specialties|length }}</p>
 </div>
 {% endif %}
 
-{% if roster_data %}
+{% if stats and stats.staff_work_distribution %}
+<div style="background: #fff3e0; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
+    <h3>Staff Work Distribution</h3>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+        {% for staff, days in stats.staff_work_distribution.items() %}
+        <div style="background: white; padding: 10px; border-radius: 3px; border: 1px solid #ddd;">
+            <strong>{{ staff }}</strong>: {{ days }} days
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if roster and sorted_dates %}
 <div style="margin-top: 20px;">
     <h3>Daily Roster</h3>
     <table style="width: 100%; border-collapse: collapse;">
@@ -34,42 +47,47 @@
                 <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Date</th>
                 <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Day</th>
                 <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Assigned Staff</th>
+                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Specialties</th>
                 <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Available</th>
-                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Shortage</th>
                 <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Status</th>
             </tr>
         </thead>
         <tbody>
-            {% for date, day_data in roster_data.items() %}
-            <tr {% if day_data.shortage > 0 %}style="background: #ffe6e6;"{% endif %}>
-                <td style="border: 1px solid #ddd; padding: 8px;">{{ day_data.date }}</td>
-                <td style="border: 1px solid #ddd; padding: 8px;">{{ day_data.day }}</td>
+            {% for date in sorted_dates %}
+            {% set day_data = roster[date] %}
+            {% set is_understaffed = day_data.staff|length < rules.min_staff_per_day %}
+            <tr {% if is_understaffed %}style="background: #ffe6e6;"{% elif day_data.is_weekend %}style="background: #f0f8ff;"{% endif %}>
+                <td style="border: 1px solid #ddd; padding: 8px;">{{ date }}</td>
                 <td style="border: 1px solid #ddd; padding: 8px;">
-                    {% if day_data.assigned_staff %}
-                        {% for staff in day_data.assigned_staff %}
-                            <div style="margin-bottom: 2px;">
-                                {{ staff.name }}
-                                {% if staff.specialty %}
-                                    <span style="color: #666; font-size: 12px;">({{ staff.specialty }})</span>
-                                {% endif %}
-                            </div>
+                    {% set date_obj = date | datetime %}
+                    {{ date_obj.strftime('%A') }}
+                    {% if day_data.is_weekend %}
+                        <span style="color: #1976d2; font-size: 12px;">🌅</span>
+                    {% endif %}
+                </td>
+                <td style="border: 1px solid #ddd; padding: 8px;">
+                    {% if day_data.staff %}
+                        {% for staff in day_data.staff %}
+                            <div style="margin-bottom: 2px;">{{ staff }}</div>
                         {% endfor %}
                     {% else %}
                         <em>No staff assigned</em>
                     {% endif %}
                 </td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">
-                    {{ day_data.total_available }}
-                </td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">
-                    {% if day_data.shortage > 0 %}
-                        <strong style="color: #d32f2f;">{{ day_data.shortage }}</strong>
+                <td style="border: 1px solid #ddd; padding: 8px;">
+                    {% if day_data.specialties %}
+                        {% for specialty in day_data.specialties %}
+                            <span style="background: #e3f2fd; padding: 2px 6px; border-radius: 3px; font-size: 12px; margin-right: 4px;">{{ specialty }}</span>
+                        {% endfor %}
                     {% else %}
-                        0
+                        <em>None</em>
                     {% endif %}
                 </td>
                 <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">
-                    {% if day_data.shortage > 0 %}
+                    {{ day_data.available_count }}
+                </td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">
+                    {% if is_understaffed %}
                         <span style="color: #d32f2f;">⚠️ Understaffed</span>
                     {% else %}
                         <span style="color: #2e7d32;">✅ Covered</span>
@@ -86,7 +104,8 @@
     <ul>
         <li><span style="color: #2e7d32;">✅ Covered</span> - Day has minimum required staff</li>
         <li><span style="color: #d32f2f;">⚠️ Understaffed</span> - Day has insufficient staff (highlighted in red)</li>
-        <li>Staff specialties are shown in parentheses when available</li>
+        <li><span style="color: #1976d2;">🌅 Weekend</span> - Weekend days (highlighted in blue)</li>
+        <li>Specialties are shown as colored tags</li>
     </ul>
 </div>
 {% else %}
@@ -94,7 +113,8 @@
 {% endif %}
 
 <div style="margin-top: 30px;">
-    <a href="{{ url_for('index') }}" class="button">Start New Roster</a>
+    <a href="{{ url_for('export_roster', filename=filename) }}" class="button" style="background: #2e7d32; color: white;">📊 Export to Excel</a>
+    <a href="{{ url_for('index') }}" class="button" style="margin-left: 10px;">Start New Roster</a>
     <a href="{{ url_for('upload_leave') }}" class="button" style="margin-left: 10px;">Upload Different File</a>
 </div>
 {% endblock %}

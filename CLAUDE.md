@@ -31,11 +31,17 @@ Flask web app for creating medical staff rosters based on leave schedules and cl
 1. Multi-format file upload (Excel/CSV/PDF/Images) with drag-and-drop
 2. OCR extraction from PDF and image files
 3. Manual review and correction of extracted data
-4. Basic rule configuration interface
+4. Advanced rule configuration interface
 5. Column mapping for flexible file formats
 6. Anthropic-inspired UI with orange accent (#D97757)
 7. Progress step indicators
 8. Responsive design with loading states
+9. Intelligent roster generation algorithm
+10. Specialty-based staff selection
+11. Fair workload distribution
+12. Excel export with statistics
+13. Weekend/holiday detection
+14. Comprehensive reporting dashboard
 
 ## Design System
 - Primary Color: #D97757 (Anthropic orange)
@@ -47,15 +53,15 @@ Flask web app for creating medical staff rosters based on leave schedules and cl
 
 ## TODO Priority List
 1. Improve OCR parsing accuracy for roster formats
-2. Implement roster generation algorithm
-3. Add database (SQLite) for storing rosters and templates
-4. Specialty-based minimum coverage rules
-5. Export roster as Excel/PDF with formatting
-6. Advanced constraints (max consecutive days, fair distribution)
-7. Save and reuse extraction templates for PDFs
-8. Batch processing for multiple files
-9. User authentication and multi-tenant support
-10. Real-time roster conflict detection
+2. Add database (SQLite) for storing rosters and templates
+3. Advanced constraints (max consecutive days, shift preferences)
+4. Save and reuse extraction templates for PDFs
+5. Batch processing for multiple files
+6. User authentication and multi-tenant support
+7. Real-time roster conflict detection
+8. PDF export with professional formatting
+9. Email notifications for roster updates
+10. Integration with hospital management systems
 
 ## Key Business Rules
 - Each day must have minimum staff coverage
@@ -79,9 +85,14 @@ Flask web app for creating medical staff rosters based on leave schedules and cl
 2. System detects file type:
    - Structured (Excel/CSV): Direct to column mapping
    - Unstructured (PDF/Image): OCR extraction → Manual review → Column mapping
-3. Configure roster rules
-4. Generate roster based on availability
-5. Export final roster
+3. Configure roster rules (minimum staff, date ranges, specialty requirements)
+4. Generate roster using intelligent algorithm:
+   - Parse leave schedules and create availability matrix
+   - Apply fair distribution algorithm
+   - Ensure specialty coverage when possible
+   - Handle weekend/holiday considerations
+5. Review generated roster with statistics
+6. Export final roster to Excel format
 
 ## OCR Processing Details
 - PDF: Try PyPDF2 text extraction first, fall back to OCR if needed
@@ -97,6 +108,7 @@ Flask web app for creating medical staff rosters based on leave schedules and cl
 - GET /configure-rules/<filename>: Set roster rules
 - POST /generate-roster: Create roster from rules
 - GET /roster: View generated roster
+- GET /export-roster: Export roster to Excel format
 
 ## Development Workflow
 - Activate environment: source venv/bin/activate
@@ -123,10 +135,15 @@ For PDF/Images, the system attempts to extract these fields automatically.
 - DONE: Manual data correction interface
 - DONE: Preview uploaded data
 - DONE: Column mapping interface
-- IN PROGRESS: Roster generation logic
+- DONE: Core roster generation algorithm
+- DONE: Specialty-based staff selection
+- DONE: Fair workload distribution
+- DONE: Leave schedule management
+- DONE: Weekend/holiday detection
+- DONE: Excel export functionality
+- DONE: Statistics and reporting
 - IN PROGRESS: OCR parsing improvements
 - TODO: Database storage
-- TODO: Export functionality
 - TODO: Advanced rules engine
 - TODO: Extraction templates
 
@@ -146,6 +163,12 @@ For PDF/Images, the system attempts to extract these fields automatically.
 - Added drag-and-drop file upload interface
 - Built manual review interface for extracted data
 - Improved UX with progress indicators and loading states
+- Implemented complete roster generation algorithm
+- Added specialty-based staff selection logic
+- Built fair workload distribution system
+- Added Excel export functionality with statistics
+- Implemented weekend/holiday detection
+- Created comprehensive roster statistics and reporting
 
 ## Performance Considerations
 - Large PDF files may take time to process
@@ -160,6 +183,33 @@ For PDF/Images, the system attempts to extract these fields automatically.
 - Use secure_filename for all uploads
 - Consider virus scanning for production
 
+## Roster Generation Algorithm Details
+
+### Core Algorithm Features:
+- **Leave Schedule Processing**: Parses start/end dates and creates comprehensive leave tracking
+- **Fair Distribution**: Tracks work counts per staff member and prioritizes those with fewer assignments
+- **Specialty Coverage**: When sufficient staff available, ensures at least one doctor from each specialty per day
+- **Weekend Detection**: Identifies weekends and applies appropriate scheduling logic
+- **Understaffing Detection**: Flags days that don't meet minimum staffing requirements
+- **Statistics Generation**: Provides detailed coverage analysis and work distribution metrics
+
+### Algorithm Logic:
+1. **Data Preparation**: Load leave data and extract unique staff/specialties
+2. **Leave Matrix Creation**: Build date-based availability tracking for each staff member
+3. **Daily Assignment Loop**: For each day in roster period:
+   - Identify available staff (excluding those on leave)
+   - Sort by current work count (fair distribution)
+   - Group by specialty and select balanced coverage
+   - Apply minimum staffing requirements
+   - Update work counters
+4. **Statistics Calculation**: Generate coverage rates, distribution metrics, and reporting data
+
+### Export Features:
+- **Excel Format**: Professional spreadsheet with multiple sheets
+- **Roster Sheet**: Daily assignments with staff names, specialties, and status
+- **Statistics Sheet**: Coverage metrics, work distribution, and summary data
+- **Professional Formatting**: Clean layout suitable for clinical use
+
 ## Future Enhancements
 - Machine learning for better roster pattern recognition
 - API endpoints for integration with hospital systems
@@ -167,3 +217,5 @@ For PDF/Images, the system attempts to extract these fields automatically.
 - Mobile-responsive roster viewing
 - Automated shift swapping suggestions
 - Integration with staff preference systems
+- Advanced constraints (max consecutive days, shift preferences)
+- Email notifications and calendar integration
