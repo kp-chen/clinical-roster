@@ -14,13 +14,22 @@ import re
 import logging
 from typing import List, Dict
 
+# Configure logging first
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Then try importing camelot
+try:
+    import camelot
+    CAMELOT_AVAILABLE = True
+    logger.info("Camelot-py is available for enhanced PDF table extraction")
+except ImportError:
+    CAMELOT_AVAILABLE = False
+    logger.warning("Camelot-py not available. Install with: pip install camelot-py[cv]")
+
 # Initialize Flask app
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this'
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Custom Jinja2 filters
 @app.template_filter('datetime')
@@ -109,6 +118,161 @@ def extract_text_from_image(filepath):
         return text
     except Exception as e:
         raise Exception(f"Error processing image: {str(e)}")
+
+def extract_tables_from_pdf_camelot(filepath: str) -> List[Dict]:
+    """Extract tables from PDF using Camelot for better handling of merged cells"""
+    logger.info(f"Starting Camelot table extraction from: {filepath}")
+    
+    if not CAMELOT_AVAILABLE:
+        logger.error("Camelot-py is not installed")
+        raise Exception("Camelot-py is required for table extraction. Install with: pip install camelot-py[cv]")
+    
+    roster_data = []
+    
+    try:
+        # Read PDF tables using Camelot
+        # Use 'lattice' method for tables with lines/borders
+        # Use 'stream' method for tables without borders
+        tables = camelot.read_pdf(filepath, pages='all', flavor='lattice')
+        
+        if len(tables) == 0:
+            # Try stream method if lattice didn't find tables
+            logger.info("No tables found with lattice method, trying stream method")
+            tables = camelot.read_pdf(filepath, pages='all', flavor='stream')
+        
+        logger.info(f"Found {len(tables)} tables in PDF")
+        
+        current_date = None
+        current_day = None
+        
+        for table_num, table in enumerate(tables):
+            df = table.df
+            logger.info(f"Processing table {table_num + 1} with shape {df.shape}")
+            
+            # Process each row
+            for idx, row in df.iterrows():
+                # Look for date/day pattern in first column
+                first_col = str(row[0]).strip()
+                
+                # Check if this row contains a date/day header
+                date_match = re.match(r'^(\d+)\s*(Mon|Tue|Wed|Thu|Fri|Sat|Sun)', first_col, re.IGNORECASE)
+                if date_match:
+                    current_date = date_match.group(1)
+                    current_day = date_match.group(2).title()
+                    logger.info(f"Found date header: {current_date} {current_day}")
+                
+                # Process all columns for staff names
+                for col_idx, cell in enumerate(row):
+                    cell_text = str(cell).strip()
+                    
+                    # Skip empty cells or cells that are just dates
+                    if not cell_text or re.match(r'^\d+\s*(Mon|Tue|Wed|Thu|Fri|Sat|Sun)?$', cell_text, re.IGNORECASE):
+                        continue
+                    
+                    # Look for staff name pattern with ID
+                    staff_match = re.search(r'([A-Za-z][A-Za-z\s/\-\.]+?)\s*\(([A-Z0-9]+)\)', cell_text)
+                    
+                    if staff_match and current_date and current_day:
+                        staff_name = staff_match.group(1).strip()
+                        staff_id = staff_match.group(2).strip()
+                        
+                        roster_data.append({
+                            'Date': current_date,
+                            'Day': current_day,
+                            'Staff_Name': staff_name,
+                            'Staff_ID': staff_id,
+                            'Specialty': '',
+                            'Leave_Type': '',
+                            'extracted': True,
+                            'source': f'Table {table_num + 1}, Row {idx + 1}, Col {col_idx + 1}'
+                        })
+                        logger.info(f"Extracted: {staff_name} ({staff_id}) on {current_date} {current_day}")
+                    
+                    elif current_date and current_day and re.search(r'[A-Za-z]{2,}', cell_text):
+                        # Try to extract just names without IDs
+                        # Clean up the text
+                        clean_text = re.sub(r'[^\w\s/\-\.]', ' ', cell_text)
+                        clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+                        
+                        if len(clean_text) > 2 and not clean_text.isdigit():
+                            roster_data.append({
+                                'Date': current_date,
+                                'Day': current_day,
+                                'Staff_Name': clean_text,
+                                'Staff_ID': '',
+                                'Specialty': '',
+                                'Leave_Type': '',
+                                'extracted': True,
+                                'source': f'Table {table_num + 1}, Row {idx + 1}, Col {col_idx + 1}'
+                            })
+                            logger.info(f"Extracted name without ID: {clean_text} on {current_date} {current_day}")
+        
+        # If no roster data found, try to extract leave schedule format
+        if not roster_data:
+            logger.info("No roster format found, trying leave schedule format")
+            roster_data = _extract_leave_schedule_from_tables(tables)
+        
+        logger.info(f"Camelot extraction complete. Found {len(roster_data)} records")
+        return roster_data
+        
+    except Exception as e:
+        logger.error(f"Camelot extraction failed: {str(e)}")
+        raise
+
+def _extract_leave_schedule_from_tables(tables) -> List[Dict]:
+    """Extract leave schedule format from Camelot tables"""
+    roster_data = []
+    
+    for table_num, table in enumerate(tables):
+        df = table.df
+        
+        # Try to identify header row
+        header_row = None
+        for idx in range(min(3, len(df))):  # Check first 3 rows
+            row = df.iloc[idx]
+            row_text = ' '.join(str(cell).lower() for cell in row)
+            if any(keyword in row_text for keyword in ['name', 'staff', 'leave', 'start', 'end', 'from', 'to']):
+                header_row = idx
+                break
+        
+        if header_row is not None:
+            # Use identified row as headers
+            df.columns = df.iloc[header_row]
+            df = df[header_row + 1:].reset_index(drop=True)
+        
+        # Try to map columns
+        name_col = None
+        start_col = None
+        end_col = None
+        
+        for col in df.columns:
+            col_lower = str(col).lower()
+            if 'name' in col_lower or 'staff' in col_lower:
+                name_col = col
+            elif 'start' in col_lower or 'from' in col_lower:
+                start_col = col
+            elif 'end' in col_lower or 'to' in col_lower:
+                end_col = col
+        
+        if name_col:
+            for idx, row in df.iterrows():
+                staff_name = str(row[name_col]).strip() if name_col else ''
+                leave_start = str(row[start_col]).strip() if start_col else ''
+                leave_end = str(row[end_col]).strip() if end_col else ''
+                
+                if staff_name and len(staff_name) > 2:
+                    roster_data.append({
+                        'Staff_Name': staff_name,
+                        'Staff_ID': '',
+                        'Leave_Start': leave_start,
+                        'Leave_End': leave_end,
+                        'Specialty': '',
+                        'Leave_Type': 'Leave',
+                        'extracted': True,
+                        'source': f'Table {table_num + 1}, Row {idx + 1}'
+                    })
+    
+    return roster_data
 
 def _parse_extracted_text(text: str) -> List[Dict]:
     """Parse roster information from extracted text using intelligent pattern matching"""
@@ -360,14 +524,41 @@ def upload_leave():
                     }
                     
                 elif file_ext == 'pdf':
-                    text = extract_text_from_pdf(filepath)
-                    roster_data = parse_roster_text(text)
-                    session_data = {
-                        'type': 'unstructured',
-                        'filename': filename,
-                        'raw_text': text,
-                        'parsed_data': roster_data
-                    }
+                    # Try Camelot table extraction first for better merged cell handling
+                    if CAMELOT_AVAILABLE:
+                        try:
+                            roster_data = extract_tables_from_pdf_camelot(filepath)
+                            if roster_data:
+                                logger.info(f"Successfully extracted {len(roster_data)} records using Camelot")
+                                session_data = {
+                                    'type': 'unstructured',
+                                    'filename': filename,
+                                    'raw_text': f"Extracted {len(roster_data)} records from PDF tables",
+                                    'parsed_data': roster_data
+                                }
+                            else:
+                                raise Exception("No data extracted from tables")
+                        except Exception as e:
+                            logger.warning(f"Camelot extraction failed, falling back to text extraction: {str(e)}")
+                            # Fall back to text extraction
+                            text = extract_text_from_pdf(filepath)
+                            roster_data = parse_roster_text(text)
+                            session_data = {
+                                'type': 'unstructured',
+                                'filename': filename,
+                                'raw_text': text,
+                                'parsed_data': roster_data
+                            }
+                    else:
+                        # Use existing text extraction if Camelot not available
+                        text = extract_text_from_pdf(filepath)
+                        roster_data = parse_roster_text(text)
+                        session_data = {
+                            'type': 'unstructured',
+                            'filename': filename,
+                            'raw_text': text,
+                            'parsed_data': roster_data
+                        }
                     
                 elif file_ext in ['png', 'jpg', 'jpeg']:
                     text = extract_text_from_image(filepath)

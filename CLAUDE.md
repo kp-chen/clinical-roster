@@ -5,12 +5,12 @@ Flask web app for creating medical staff rosters based on leave schedules and cl
 
 ## Tech Stack
 - Backend: Flask 3.0.0
-- Data Processing: pandas, PyPDF2, pytesseract (OCR)
+- Data Processing: pandas, PyPDF2, pytesseract (OCR), camelot-py (table extraction)
 - File Handling: openpyxl (Excel), pdf2image, Pillow (images)
 - Frontend: Jinja2 templates, custom CSS (Anthropic design system)
 - Python: 3.10+
 - Development: Ubuntu WSL, VS Code
-- System Dependencies: poppler-utils, tesseract-ocr
+- System Dependencies: poppler-utils, tesseract-ocr, ghostscript (for camelot)
 
 ## Project Structure
 - app.py: Main Flask application with multi-format file processing
@@ -95,6 +95,12 @@ Flask web app for creating medical staff rosters based on leave schedules and cl
 6. Export final roster to Excel format
 
 ## OCR Processing Details
+- **Enhanced Table Extraction**: Camelot-py integration for superior handling of PDF tables with merged cells
+- **Merged Cell Support**: Correctly processes tables where date/day headers span multiple rows
+- **Multi-Method Approach**: 
+  1. Primary: Camelot table extraction (lattice method for bordered tables, stream for borderless)
+  2. Fallback: PyPDF2 text extraction with intelligent pattern matching
+  3. Last resort: OCR via Tesseract for scanned documents
 - **PDF Text Extraction**: Multi-layered approach with PyPDF2 primary extraction and OCR fallback
 - **Enhanced OCR**: High-DPI (300 DPI) processing with optimized Tesseract configuration
 - **Intelligent Pattern Matching**: Advanced regex patterns for roster format "Date DayName Employee1 (ID1) Employee2 (ID2)"
@@ -185,6 +191,12 @@ For PDF/Images, the system attempts to extract these fields automatically.
   - Comprehensive error handling and debug logging
   - Support for "Date DayName StaffName (ID)" format parsing
   - Successfully extracts 200+ staff records from clinical roster PDFs
+- **LATEST UPDATE**: Integrated Camelot-py for superior PDF table extraction:
+  - Handles merged cells correctly (date/day headers spanning multiple rows)
+  - Automatic table detection with lattice and stream methods
+  - Maintains proper row-column relationships in complex tables
+  - Falls back to text extraction when table parsing fails
+  - Tested successfully on clinical roster PDFs with 31-day periods
 
 ## Enhanced PDF Parsing Engine
 
@@ -219,7 +231,8 @@ The system now features a sophisticated PDF parsing engine specifically designed
 
 ### Technical Implementation
 **Key Functions in app.py:**
-- `extract_text_from_pdf()` - Multi-method text extraction with logging
+- `extract_tables_from_pdf_camelot()` - Primary table extraction using Camelot for merged cell support
+- `extract_text_from_pdf()` - Multi-method text extraction with logging (fallback method)
 - `_parse_extracted_text()` - Intelligent pattern matching and state management  
 - `validate_parsed_data()` - Data cleaning and deduplication
 - `parse_roster_text()` - Main entry point with error handling
