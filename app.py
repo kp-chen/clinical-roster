@@ -10,10 +10,17 @@ import PyPDF2
 from pdf2image import convert_from_path
 import io
 import tempfile
+import re
+import logging
+from typing import List, Dict
 
 # Initialize Flask app
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this'
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Custom Jinja2 filters
 @app.template_filter('datetime')
@@ -38,26 +45,61 @@ def allowed_file(filename):
     """Check if uploaded file has allowed extension"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def extract_text_from_pdf(filepath):
-    """Extract text from PDF file"""
-    text = ""
+def extract_text_from_pdf(filepath: str) -> str:
+    """Extract text from PDF file using multiple methods"""
+    logger.info(f"Starting PDF text extraction from: {filepath}")
+    
+    # Method 1: PyPDF2 text extraction
     try:
-        # Try PyPDF2 first
+        text = ""
         with open(filepath, 'rb') as file:
             pdf_reader = PyPDF2.PdfReader(file)
-            for page in pdf_reader.pages:
-                text += page.extract_text()
+            logger.info(f"PDF has {len(pdf_reader.pages)} pages")
+            
+            for page_num, page in enumerate(pdf_reader.pages):
+                page_text = page.extract_text()
+                if page_text.strip():
+                    text += page_text + "\n"
+                    logger.info(f"Page {page_num + 1}: Extracted {len(page_text)} characters")
+                else:
+                    logger.warning(f"Page {page_num + 1}: No text found")
         
-        # If no text found, try OCR
-        if not text.strip():
-            images = convert_from_path(filepath)
-            for image in images:
-                text += pytesseract.image_to_string(image)
-                
+        if text.strip():
+            logger.info(f"PyPDF2 extracted {len(text)} characters total")
+            return text
+        else:
+            logger.warning("PyPDF2 extraction returned empty text")
+            
     except Exception as e:
-        raise Exception(f"Error processing PDF: {str(e)}")
+        logger.error(f"PyPDF2 extraction failed: {str(e)}")
     
-    return text
+    # Method 2: OCR fallback
+    try:
+        logger.info("Attempting OCR extraction...")
+        images = convert_from_path(filepath, dpi=300)  # Higher DPI for better OCR
+        text = ""
+        
+        for i, image in enumerate(images):
+            # Configure Tesseract for better table recognition
+            custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz()\- '
+            page_text = pytesseract.image_to_string(image, config=custom_config)
+            
+            if page_text.strip():
+                text += page_text + "\n"
+                logger.info(f"OCR Page {i + 1}: Extracted {len(page_text)} characters")
+            else:
+                logger.warning(f"OCR Page {i + 1}: No text found")
+        
+        if text.strip():
+            logger.info(f"OCR extracted {len(text)} characters total")
+            return text
+        else:
+            logger.error("OCR extraction returned empty text")
+            
+    except Exception as e:
+        logger.error(f"OCR extraction failed: {str(e)}")
+    
+    raise Exception("All PDF text extraction methods failed")
 
 def extract_text_from_image(filepath):
     """Extract text from image using OCR"""
@@ -68,25 +110,210 @@ def extract_text_from_image(filepath):
     except Exception as e:
         raise Exception(f"Error processing image: {str(e)}")
 
-def parse_roster_text(text):
-    """Parse roster information from extracted text"""
-    # This is a simple parser - you'll need to customize based on your roster format
-    lines = text.strip().split('\n')
+def _parse_extracted_text(text: str) -> List[Dict]:
+    """Parse roster information from extracted text using intelligent pattern matching"""
+    logger.info("Starting intelligent roster text parsing")
+    
+    lines = [line.strip() for line in text.strip().split('\n') if line.strip()]
     roster_data = []
     
-    # Simple parsing logic - customize this based on your actual roster format
-    for line in lines:
-        if line.strip():
-            # Example: Try to extract name, date, and other info
-            # This will need to be adapted to your specific format
-            parts = line.split()
-            if len(parts) >= 2:
-                roster_data.append({
-                    'text_line': line.strip(),
-                    'extracted': True
-                })
+    # Enhanced regex patterns for different roster formats
+    patterns = {
+        # Pattern 1: "1 Thu" or "1Thu" at start of line, followed by staff name
+        'date_day': re.compile(r'^(\d+)\s+(Mon|Tue|Wed|Thu|Fri|Sat|Sun)([A-Za-z].*)', re.IGNORECASE),
+        
+        # Pattern 2: "Name (ID)" format - more precise
+        'staff_with_id': re.compile(r'([A-Za-z][A-Za-z\s/]+?)\s*\(([A-Z0-9]+)\)', re.IGNORECASE),
+        
+        # Pattern 3: Date range patterns
+        'date_range': re.compile(r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s*[-–to]\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})', re.IGNORECASE),
+        
+        # Pattern 4: Single date patterns
+        'single_date': re.compile(r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b'),
+        
+        # Pattern 5: Leave/Holiday keywords
+        'leave_keywords': re.compile(r'\b(leave|holiday|vacation|absent|off|sick)\b', re.IGNORECASE)
+    }
     
+    current_date = None
+    current_day = None
+    
+    for line_num, line in enumerate(lines):
+        logger.debug(f"Processing line {line_num + 1}: {line}")
+        
+        # Skip lines that are just headers
+        if line.lower() in ['leave', 'roster', 'schedule']:
+            continue
+        
+        # Check for date + day pattern at start of line
+        date_day_match = patterns['date_day'].match(line)
+        if date_day_match:
+            current_date = date_day_match.group(1)
+            current_day = date_day_match.group(2)
+            remainder_text = date_day_match.group(3)  # Everything after day name
+            
+            logger.info(f"Found date/day pattern: Date={current_date}, Day={current_day}")
+            
+            # Extract staff names from the remainder text
+            staff_matches = patterns['staff_with_id'].findall(remainder_text)
+            
+            for staff_name, staff_id in staff_matches:
+                staff_name = staff_name.strip()
+                # Clean up any remaining day name artifacts
+                staff_name = re.sub(r'^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s*', '', staff_name, flags=re.IGNORECASE)
+                
+                if staff_name and len(staff_name) > 1:  # Only add if name is meaningful
+                    roster_data.append({
+                        'Staff_Name': staff_name,
+                        'Staff_ID': staff_id,
+                        'Date': current_date,
+                        'Day': current_day,
+                        'Specialty': '',  # To be filled by user
+                        'Leave_Type': 'Work',
+                        'parsed_from': f'Line {line_num + 1}',
+                        'confidence': 'high'
+                    })
+                    logger.info(f"Extracted staff: {staff_name} ({staff_id})")
+            
+            continue
+        
+        # Check for standalone staff names (only if no date/day pattern found)
+        staff_matches = patterns['staff_with_id'].findall(line)
+        if staff_matches:
+            for staff_name, staff_id in staff_matches:
+                staff_name = staff_name.strip()
+                # Clean up any day name artifacts at the beginning
+                staff_name = re.sub(r'^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s*', '', staff_name, flags=re.IGNORECASE)
+                
+                if staff_name and len(staff_name) > 1:  # Only add if name is meaningful
+                    roster_data.append({
+                        'Staff_Name': staff_name,
+                        'Staff_ID': staff_id,
+                        'Date': current_date or '',
+                        'Day': current_day or '',
+                        'Specialty': '',
+                        'Leave_Type': 'Work',
+                        'parsed_from': f'Line {line_num + 1}',
+                        'confidence': 'medium'
+                    })
+                    logger.info(f"Extracted standalone staff: {staff_name} ({staff_id})")
+        
+        # Check for date ranges (leave schedules)
+        date_range_match = patterns['date_range'].search(line)
+        if date_range_match:
+            start_date = date_range_match.group(1)
+            end_date = date_range_match.group(2)
+            
+            # Look for staff names in the same line
+            staff_matches = patterns['staff_with_id'].findall(line)
+            for staff_name, staff_id in staff_matches:
+                staff_name = staff_name.strip()
+                roster_data.append({
+                    'Staff_Name': staff_name,
+                    'Staff_ID': staff_id,
+                    'Leave_Start': start_date,
+                    'Leave_End': end_date,
+                    'Specialty': '',
+                    'Leave_Type': 'Leave',
+                    'parsed_from': f'Line {line_num + 1}',
+                    'confidence': 'high'
+                })
+                logger.info(f"Extracted leave schedule: {staff_name} ({start_date} to {end_date})")
+    
+    logger.info(f"Parsing complete. Extracted {len(roster_data)} records")
     return roster_data
+
+def parse_roster_text(text: str) -> List[Dict]:
+    """Main entry point for roster text parsing with validation"""
+    try:
+        if not text or not text.strip():
+            logger.warning("Empty text provided for parsing")
+            return []
+        
+        # Clean up text
+        text = re.sub(r'\s+', ' ', text)  # Normalize whitespace
+        text = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', text)  # Remove control characters
+        
+        logger.info(f"Parsing text of length {len(text)}")
+        
+        parsed_data = _parse_extracted_text(text)
+        
+        # Validate parsed data
+        validated_data = validate_parsed_data(parsed_data)
+        
+        return validated_data
+        
+    except Exception as e:
+        logger.error(f"Error parsing roster text: {str(e)}")
+        return [{
+            'text_line': text[:200] + '...' if len(text) > 200 else text,
+            'error': str(e),
+            'extracted': False
+        }]
+
+def validate_parsed_data(data: List[Dict]) -> List[Dict]:
+    """Validate and clean parsed roster data"""
+    logger.info(f"Validating {len(data)} parsed records")
+    
+    validated = []
+    seen_staff = set()
+    
+    for record in data:
+        # Basic validation
+        if not record.get('Staff_Name', '').strip():
+            logger.warning(f"Skipping record with empty staff name: {record}")
+            continue
+        
+        # Clean staff name
+        staff_name = record['Staff_Name'].strip()
+        staff_name = re.sub(r'\s+', ' ', staff_name)  # Normalize whitespace
+        
+        # Skip if name is too short or invalid
+        if len(staff_name) < 2:
+            logger.warning(f"Skipping invalid staff name: {staff_name}")
+            continue
+        
+        # Validate staff name (should contain at least one letter)
+        if not re.search(r'[A-Za-z]', staff_name):
+            logger.warning(f"Skipping invalid staff name: {staff_name}")
+            continue
+        
+        record['Staff_Name'] = staff_name
+        
+        # Create unique key for deduplication
+        unique_key = f"{staff_name}_{record.get('Staff_ID', '')}_{record.get('Date', '')}_{record.get('Day', '')}"
+        
+        if unique_key in seen_staff:
+            logger.debug(f"Skipping duplicate record: {unique_key}")
+            continue
+        
+        seen_staff.add(unique_key)
+        
+        # Validate dates if present
+        for date_field in ['Date', 'Leave_Start', 'Leave_End']:
+            if date_field in record and record[date_field]:
+                try:
+                    # Try to parse and normalize date
+                    date_str = record[date_field]
+                    if re.match(r'^\d+$', date_str):  # Day number only
+                        # Keep as-is for now
+                        pass
+                    elif '/' in date_str or '-' in date_str:
+                        # Try to parse full date
+                        parsed_date = pd.to_datetime(date_str, errors='coerce')
+                        if pd.isna(parsed_date):
+                            logger.warning(f"Invalid date format: {date_str}")
+                            record[date_field] = ''
+                        else:
+                            record[date_field] = parsed_date.strftime('%Y-%m-%d')
+                except Exception as e:
+                    logger.warning(f"Date parsing error for {date_field}={record[date_field]}: {e}")
+                    record[date_field] = ''
+        
+        validated.append(record)
+    
+    logger.info(f"Validation complete. {len(validated)} valid records")
+    return validated
 
 @app.route('/')
 def index():
