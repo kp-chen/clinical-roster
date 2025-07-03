@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Welcome to Clinical Roster Builder</h2>
+<p>This tool helps you create fair and efficient rosters for medical teams based on leave schedules and custom rules.
+</p>
+
+<div style="margin-top: 30px;">
+    <h3>Get Started</h3>
+    <p>Upload your team's leave schedule to begin:</p>
+    <a href="{{ url_for('upload_leave') }}" class="button">Upload Leave Schedule</a>
+</div>
+
+<div style="margin-top: 40px;">
+    <h3>How it works:</h3>
+    <ol>
+        <li><strong>Upload Leave Schedule:</strong> Upload an Excel or CSV file containing staff leave dates</li>
+        <li><strong>Configure Rules:</strong> Set minimum staffing levels, specialty requirements, and other constraints
+        </li>
+        <li><strong>Generate Roster:</strong> The system will create an optimized roster respecting all rules</li>
+        <li><strong>Download & Review:</strong> Download the roster and make any manual adjustments needed</li>
+    </ol>
+</div>
+{% endblock %}

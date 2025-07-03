@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Configure Roster Rules</h2>
+
+<div style="margin-bottom: 30px;">
+    <h3>File Preview: {{ filename }}</h3>
+    <p>Detected columns: {{ columns|join(', ') }}</p>
+
+    <table style="font-size: 14px;">
+        <thead>
+            <tr>
+                {% for col in columns %}
+                <th>{{ col }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in preview_data %}
+            <tr>
+                {% for col in columns %}
+                <td>{{ row[col] }}</td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<form method="POST" action="{{ url_for('generate_roster') }}">
+    <input type="hidden" name="filename" value="{{ filename }}">
+
+    <h3>Map Your Data Columns</h3>
+
+    <div class="form-group">
+        <label for="staff_column">Staff Name/ID Column:</label>
+        <select name="staff_column" id="staff_column" required>
+            <option value="">Select column...</option>
+            {% for col in columns %}
+            <option value="{{ col }}">{{ col }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="specialty_column">Specialty Column:</label>
+        <select name="specialty_column" id="specialty_column" required>
+            <option value="">Select column...</option>
+            {% for col in columns %}
+            <option value="{{ col }}">{{ col }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="date_column">Leave Start Date Column:</label>
+        <select name="date_column" id="date_column" required>
+            <option value="">Select column...</option>
+            {% for col in columns %}
+            <option value="{{ col }}">{{ col }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <h3>Set Roster Rules</h3>
+
+    <div class="form-group">
+        <label for="min_staff">Minimum Staff Per Day:</label>
+        <input type="number" name="min_staff" id="min_staff" value="2" min="1" required>
+        <p style="color: #666; font-size: 14px;">Minimum number of doctors required each day</p>
+    </div>
+
+    <div class="form-group">
+        <label for="roster_start">Roster Start Date:</label>
+        <input type="date" name="roster_start" id="roster_start" required>
+    </div>
+
+    <div class="form-group">
+        <label for="roster_end">Roster End Date:</label>
+        <input type="date" name="roster_end" id="roster_end" required>
+    </div>
+
+    <div style="margin-top: 30px;">
+        <button type="submit">Generate Roster</button>
+        <a href="{{ url_for('upload_leave') }}" style="margin-left: 10px;">Back</a>
+    </div>
+</form>
+{% endblock %}

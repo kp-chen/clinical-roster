@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Upload Leave Schedule</h2>
+
+<form method="POST" enctype="multipart/form-data">
+    <div class="form-group">
+        <label for="file">Select Leave Schedule File:</label>
+        <input type="file" name="file" id="file" accept=".xlsx,.xls,.csv" required>
+        <p style="color: #666; font-size: 14px;">Accepted formats: Excel (.xlsx, .xls) or CSV</p>
+    </div>
+
+    <div style="margin-top: 20px;">
+        <button type="submit">Upload File</button>
+        <a href="{{ url_for('index') }}" style="margin-left: 10px;">Cancel</a>
+    </div>
+</form>
+
+<div style="margin-top: 40px; padding: 20px; background-color: #f8f9fa; border-radius: 4px;">
+    <h3>File Format Guidelines:</h3>
+    <p>Your file should contain the following information:</p>
+    <ul>
+        <li><strong>Staff Name/ID:</strong> Unique identifier for each doctor</li>
+        <li><strong>Specialty:</strong> Clinical specialty (e.g., Gastroenterology, Geriatrics)</li>
+        <li><strong>Leave Dates:</strong> Dates when staff are unavailable</li>
+        <li><strong>Leave Type (optional):</strong> Annual leave, sick leave, conference, etc.</li>
+    </ul>
+
+    <p><strong>Example format:</strong></p>
+    <table style="font-size: 14px;">
+        <thead>
+            <tr>
+                <th>Staff_Name</th>
+                <th>Specialty</th>
+                <th>Leave_Start</th>
+                <th>Leave_End</th>
+                <th>Leave_Type</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Dr. Smith</td>
+                <td>Gastroenterology</td>
+                <td>2024-01-15</td>
+                <td>2024-01-19</td>
+                <td>Annual Leave</td>
+            </tr>
+            <tr>
+                <td>Dr. Johnson</td>
+                <td>Geriatrics</td>
+                <td>2024-01-17</td>
+                <td>2024-01-17</td>
+                <td>Conference</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
