@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Progress Steps -->
+<div class="steps">
+    <div class="step active">
+        <div class="step-number">1</div>
+        <div class="step-label">Upload Schedule</div>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-label">Review Extraction</div>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-label">Configure Rules</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="card-title">Review Extracted Data</h2>
+    <p class="card-description">
+        We've extracted the following information from your {{ filename }}.
+        Please review and make any necessary corrections.
+    </p>
+
+    <div style="margin-top: 24px;">
+        <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 12px;">Raw Text Extracted:</h3>
+        <div
+            style="padding: 16px; background-color: var(--surface); border-radius: 8px; font-family: var(--font-mono); font-size: 0.813rem; white-space: pre-wrap; max-height: 200px; overflow-y: auto;">
+            {{ raw_text }}</div>
+    </div>
+
+    <div style="margin-top: 32px;">
+        <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 12px;">Structured Data:</h3>
+        <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 16px;">
+            Edit the fields below to correct any extraction errors:
+        </p>
+
+        <form method="POST" action="{{ url_for('process_extraction') }}">
+            <input type="hidden" name="filename" value="{{ filename }}">
+
+            <div id="extractedData">
+                {% for item in parsed_data %}
+                <div class="form-group"
+                    style="padding: 16px; background-color: var(--surface); border-radius: 8px; margin-bottom: 12px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                        <div>
+                            <label class="form-label">Staff Name</label>
+                            <input type="text" class="form-input" name="staff_name[]" placeholder="e.g., Dr. Smith"
+                                value="">
+                        </div>
+                        <div>
+                            <label class="form-label">Specialty</label>
+                            <input type="text" class="form-input" name="specialty[]"
+                                placeholder="e.g., Gastroenterology" value="">
+                        </div>
+                        <div>
+                            <label class="form-label">Leave Start</label>
+                            <input type="date" class="form-input" name="leave_start[]" value="">
+                        </div>
+                        <div>
+                            <label class="form-label">Leave End</label>
+                            <input type="date" class="form-input" name="leave_end[]" value="">
+                        </div>
+                    </div>
+                    <div style="margin-top: 8px;">
+                        <label class="form-label">Original Text</label>
+                        <input type="text" class="form-input" readonly
+                            style="background-color: var(--background); color: var(--text-tertiary);"
+                            value="{{ item.text_line }}">
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <button type="button" class="btn btn-secondary" onclick="addRow()">
+                + Add Row
+            </button>
+
+            <div style="margin-top: 32px; display: flex; gap: 12px;">
+                <button type="submit" class="btn btn-primary">Continue to Rules</button>
+                <a href="{{ url_for('upload_leave') }}" class="btn btn-secondary">Start Over</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function addRow() {
+        const container = document.getElementById('extractedData');
+        const newRow = document.createElement('div');
+        newRow.className = 'form-group';
+        newRow.style.cssText = 'padding: 16px; background-color: var(--surface); border-radius: 8px; margin-bottom: 12px;';
+
+        newRow.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+            <div>
+                <label class="form-label">Staff Name</label>
+                <input type="text" class="form-input" name="staff_name[]" placeholder="e.g., Dr. Smith">
+            </div>
+            <div>
+                <label class="form-label">Specialty</label>
+                <input type="text" class="form-input" name="specialty[]" placeholder="e.g., Gastroenterology">
+            </div>
+            <div>
+                <label class="form-label">Leave Start</label>
+                <input type="date" class="form-input" name="leave_start[]">
+            </div>
+            <div>
+                <label class="form-label">Leave End</label>
+                <input type="date" class="form-input" name="leave_end[]">
+            </div>
+        </div>
+    `;
+
+        container.appendChild(newRow);
+    }
+</script>
+{% endblock %}

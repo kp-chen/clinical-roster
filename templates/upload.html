@@ -1,58 +1,155 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h2>Upload Leave Schedule</h2>
-
-<form method="POST" enctype="multipart/form-data">
-    <div class="form-group">
-        <label for="file">Select Leave Schedule File:</label>
-        <input type="file" name="file" id="file" accept=".xlsx,.xls,.csv" required>
-        <p style="color: #666; font-size: 14px;">Accepted formats: Excel (.xlsx, .xls) or CSV</p>
+<!-- Progress Steps -->
+<div class="steps">
+    <div class="step active">
+        <div class="step-number">1</div>
+        <div class="step-label">Upload Schedule</div>
     </div>
-
-    <div style="margin-top: 20px;">
-        <button type="submit">Upload File</button>
-        <a href="{{ url_for('index') }}" style="margin-left: 10px;">Cancel</a>
+    <div class="step-connector"></div>
+    <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-label">Configure Rules</div>
     </div>
-</form>
-
-<div style="margin-top: 40px; padding: 20px; background-color: #f8f9fa; border-radius: 4px;">
-    <h3>File Format Guidelines:</h3>
-    <p>Your file should contain the following information:</p>
-    <ul>
-        <li><strong>Staff Name/ID:</strong> Unique identifier for each doctor</li>
-        <li><strong>Specialty:</strong> Clinical specialty (e.g., Gastroenterology, Geriatrics)</li>
-        <li><strong>Leave Dates:</strong> Dates when staff are unavailable</li>
-        <li><strong>Leave Type (optional):</strong> Annual leave, sick leave, conference, etc.</li>
-    </ul>
-
-    <p><strong>Example format:</strong></p>
-    <table style="font-size: 14px;">
-        <thead>
-            <tr>
-                <th>Staff_Name</th>
-                <th>Specialty</th>
-                <th>Leave_Start</th>
-                <th>Leave_End</th>
-                <th>Leave_Type</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>Dr. Smith</td>
-                <td>Gastroenterology</td>
-                <td>2024-01-15</td>
-                <td>2024-01-19</td>
-                <td>Annual Leave</td>
-            </tr>
-            <tr>
-                <td>Dr. Johnson</td>
-                <td>Geriatrics</td>
-                <td>2024-01-17</td>
-                <td>2024-01-17</td>
-                <td>Conference</td>
-            </tr>
-        </tbody>
-    </table>
+    <div class="step-connector"></div>
+    <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-label">Generate Roster</div>
+    </div>
 </div>
+
+<div class="card">
+    <h2 class="card-title">Upload Leave Schedule</h2>
+    <p class="card-description">
+        Upload your team's leave schedule in any of the supported formats.
+        We'll extract the information and help you create an optimized roster.
+    </p>
+
+    <form method="POST" enctype="multipart/form-data" id="uploadForm">
+        <div class="file-upload-area" id="dropZone">
+            <input type="file" name="file" id="fileInput" class="file-upload-input"
+                accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg" required>
+
+            <svg class="file-upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+
+            <p class="file-upload-text">
+                Drop your file here or click to browse
+            </p>
+            <p class="file-upload-formats">
+                Supports: Excel (.xlsx, .xls), CSV, PDF, Images (.png, .jpg)
+            </p>
+        </div>
+
+        <div id="filePreview" style="display: none; margin-top: 20px;">
+            <p>Selected file: <strong id="fileName"></strong></p>
+            <div style="margin-top: 20px;">
+                <button type="submit" class="btn btn-primary">
+                    <span class="spinner" id="uploadSpinner" style="display: none;"></span>
+                    <span id="uploadText">Upload and Process</span>
+                </button>
+                <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h3 style="font-size: 1.125rem; margin-bottom: 1rem;">Supported File Formats</h3>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+        <div>
+            <h4 style="font-weight: 600; margin-bottom: 8px;">Structured Data</h4>
+            <ul style="color: var(--text-secondary); font-size: 0.875rem; list-style: none; padding: 0;">
+                <li style="margin-bottom: 4px;">✓ Excel files (.xlsx, .xls)</li>
+                <li>✓ CSV files</li>
+            </ul>
+        </div>
+
+        <div>
+            <h4 style="font-weight: 600; margin-bottom: 8px;">Documents & Images</h4>
+            <ul style="color: var(--text-secondary); font-size: 0.875rem; list-style: none; padding: 0;">
+                <li style="margin-bottom: 4px;">✓ PDF rosters</li>
+                <li>✓ Photos of printed rosters</li>
+            </ul>
+        </div>
+    </div>
+
+    <div style="margin-top: 20px; padding: 16px; background-color: var(--surface); border-radius: 8px;">
+        <p style="font-size: 0.813rem; color: var(--text-tertiary);">
+            <strong>Note:</strong> For PDF and image files, we'll use OCR to extract text.
+            You'll have a chance to review and correct the extracted information.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Drag and drop functionality
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const filePreview = document.getElementById('filePreview');
+    const fileName = document.getElementById('fileName');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const uploadForm = document.getElementById('uploadForm');
+    const uploadSpinner = document.getElementById('uploadSpinner');
+    const uploadText = document.getElementById('uploadText');
+
+    // Click to upload
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    // Drag and drop events
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('drag-over');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            fileInput.files = files;
+            handleFileSelect(files[0]);
+        }
+    });
+
+    // File selection
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFileSelect(e.target.files[0]);
+        }
+    });
+
+    // Handle file selection
+    function handleFileSelect(file) {
+        fileName.textContent = file.name;
+        dropZone.style.display = 'none';
+        filePreview.style.display = 'block';
+    }
+
+    // Cancel button
+    cancelBtn.addEventListener('click', () => {
+        fileInput.value = '';
+        dropZone.style.display = 'block';
+        filePreview.style.display = 'none';
+    });
+
+    // Form submission
+    uploadForm.addEventListener('submit', (e) => {
+        uploadSpinner.style.display = 'inline-block';
+        uploadText.textContent = 'Processing...';
+        document.querySelector('button[type="submit"]').disabled = true;
+    });
+</script>
 {% endblock %}
