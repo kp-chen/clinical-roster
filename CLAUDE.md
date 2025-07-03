@@ -84,7 +84,7 @@ Flask web app for creating medical staff rosters based on leave schedules and cl
 1. User uploads file (Excel/CSV/PDF/Image)
 2. System detects file type:
    - Structured (Excel/CSV): Direct to column mapping
-   - Unstructured (PDF/Image): OCR extraction → Manual review → Column mapping
+   - Unstructured (PDF/Image): OCR extraction → Manual review → Process extraction → Column mapping
 3. Configure roster rules (minimum staff, date ranges, specialty requirements)
 4. Generate roster using intelligent algorithm:
    - Parse leave schedules and create availability matrix
@@ -105,6 +105,7 @@ Flask web app for creating medical staff rosters based on leave schedules and cl
 - GET /: Home page
 - GET/POST /upload: File upload handler
 - GET /review-extraction/<filename>: Review OCR results
+- POST /process-extraction: Process manually corrected extraction data
 - GET /configure-rules/<filename>: Set roster rules
 - POST /generate-roster: Create roster from rules
 - GET /roster: View generated roster
@@ -162,6 +163,7 @@ For PDF/Images, the system attempts to extract these fields automatically.
 - Created Anthropic-inspired design system
 - Added drag-and-drop file upload interface
 - Built manual review interface for extracted data
+- Added process-extraction endpoint for handling corrected OCR data
 - Improved UX with progress indicators and loading states
 - Implemented complete roster generation algorithm
 - Added specialty-based staff selection logic
@@ -169,6 +171,7 @@ For PDF/Images, the system attempts to extract these fields automatically.
 - Added Excel export functionality with statistics
 - Implemented weekend/holiday detection
 - Created comprehensive roster statistics and reporting
+- Fixed PDF upload workflow with proper endpoint routing
 
 ## Performance Considerations
 - Large PDF files may take time to process

@@ -187,6 +187,52 @@ def review_extraction(filename):
         flash(f'Error loading extracted data: {str(e)}', 'error')
         return redirect(url_for('index'))
 
+@app.route('/process-extraction', methods=['POST'])
+def process_extraction():
+    """Process manually corrected extraction data"""
+    try:
+        filename = request.form.get('filename')
+        
+        # Extract form data
+        staff_names = request.form.getlist('staff_name[]')
+        specialties = request.form.getlist('specialty[]')
+        leave_starts = request.form.getlist('leave_start[]')
+        leave_ends = request.form.getlist('leave_end[]')
+        
+        # Create structured data from form inputs
+        structured_data = []
+        for i in range(len(staff_names)):
+            if staff_names[i].strip():  # Only include non-empty rows
+                structured_data.append({
+                    'Staff_Name': staff_names[i].strip(),
+                    'Specialty': specialties[i].strip() if i < len(specialties) else '',
+                    'Leave_Start': leave_starts[i] if i < len(leave_starts) else '',
+                    'Leave_End': leave_ends[i] if i < len(leave_ends) else ''
+                })
+        
+        # Convert to DataFrame and save as CSV for processing
+        df = pd.DataFrame(structured_data)
+        processed_file = os.path.join(app.config['UPLOAD_FOLDER'], f'processed_{filename}.csv')
+        df.to_csv(processed_file, index=False)
+        
+        # Update session data
+        session_file = os.path.join(app.config['UPLOAD_FOLDER'], f'session_{filename}.json')
+        with open(session_file, 'r') as f:
+            session_data = json.load(f)
+        
+        session_data['type'] = 'structured'
+        session_data['data'] = structured_data
+        
+        with open(session_file, 'w') as f:
+            json.dump(session_data, f)
+        
+        flash('Extraction data processed successfully!', 'success')
+        return redirect(url_for('configure_rules', filename=f'processed_{filename}.csv'))
+        
+    except Exception as e:
+        flash(f'Error processing extraction: {str(e)}', 'error')
+        return redirect(url_for('index'))
+
 @app.route('/configure-rules/<filename>')
 def configure_rules(filename):
     """Configure rostering rules with Anthropic-style UI"""
