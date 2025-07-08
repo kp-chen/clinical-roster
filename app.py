@@ -1,4 +1,7 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, session
+from flask_login import LoginManager, login_required, current_user
+from flask_migrate import Migrate
+from flask_wtf.csrf import CSRFProtect
 import pandas as pd
 import os
 from datetime import datetime, timedelta
@@ -13,6 +16,12 @@ import tempfile
 import re
 import logging
 from typing import List, Dict
+import holidays
+
+# Import models and configuration
+from config import config
+from models import db, User, RosterProfile, GeneratedRoster, UploadedFile
+from forms import FileUploadForm, RosterRulesForm, ProfileForm, ShareProfileForm
 
 # Configure logging first
 logging.basicConfig(level=logging.INFO)
@@ -27,9 +36,26 @@ except ImportError:
     CAMELOT_AVAILABLE = False
     logger.warning("Camelot-py not available. Install with: pip install camelot-py[cv]")
 
-# Initialize Flask app
+# Initialize Flask app with configuration
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-change-this'
+config_name = os.environ.get('FLASK_ENV', 'development')
+app.config.from_object(config[config_name])
+
+# Initialize extensions
+db.init_app(app)
+migrate = Migrate(app, db)
+csrf = CSRFProtect(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'auth.login'
+login_manager.login_message = 'Please log in to access this page.'
+
+# Import and register blueprints
+from auth import auth_bp
+app.register_blueprint(auth_bp, url_prefix='/auth')
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
 
 # Custom Jinja2 filters
 @app.template_filter('datetime')
@@ -40,19 +66,16 @@ def datetime_filter(date_string):
     except:
         return datetime.now()
 
-# Configuration
-UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv', 'pdf', 'png', 'jpg', 'jpeg'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-
 # Create necessary directories
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs('static/css', exist_ok=True)
+
+# Singapore holidays
+sg_holidays = holidays.Singapore()
 
 def allowed_file(filename):
     """Check if uploaded file has allowed extension"""
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 def extract_text_from_pdf(filepath: str) -> str:
     """Extract text from PDF file using multiple methods"""
@@ -482,9 +505,10 @@ def validate_parsed_data(data: List[Dict]) -> List[Dict]:
 @app.route('/')
 def index():
     """Home page with Anthropic-style design"""
-    return render_template('index.html')
+    return render_template('index.html', user=current_user)
 
 @app.route('/upload', methods=['GET', 'POST'])
+@login_required
 def upload_leave():
     """Handle file upload with support for multiple formats"""
     if request.method == 'POST':
@@ -589,6 +613,7 @@ def upload_leave():
     return render_template('upload.html')
 
 @app.route('/review-extraction/<filename>')
+@login_required
 def review_extraction(filename):
     """Review and edit extracted data from PDF/images"""
     session_file = os.path.join(app.config['UPLOAD_FOLDER'], f'session_{filename}.json')
@@ -606,6 +631,7 @@ def review_extraction(filename):
         return redirect(url_for('index'))
 
 @app.route('/process-extraction', methods=['POST'])
+@login_required
 def process_extraction():
     """Process manually corrected extraction data"""
     try:
@@ -652,6 +678,7 @@ def process_extraction():
         return redirect(url_for('index'))
 
 @app.route('/configure-rules/<filename>')
+@login_required
 def configure_rules(filename):
     """Configure rostering rules with Anthropic-style UI"""
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -674,7 +701,7 @@ def configure_rules(filename):
         return redirect(url_for('index'))
 
 def generate_roster_logic(filepath: str, rules: dict) -> dict:
-    """Core roster generation algorithm"""
+    """Core roster generation algorithm with Singapore holidays support"""
     try:
         # Load leave data
         if filepath.endswith('.csv'):
@@ -780,12 +807,18 @@ def generate_roster_logic(filepath: str, rules: dict) -> dict:
             for staff in selected_staff:
                 staff_work_count[staff] += 1
             
+            # Check if it's a public holiday
+            is_holiday = current_date.date() in sg_holidays
+            holiday_name = sg_holidays.get(current_date.date(), '')
+            
             # Store roster for this date
             roster[date_str] = {
                 'staff': selected_staff,
                 'specialties': list(selected_specialties),
                 'available_count': len(available_staff),
-                'is_weekend': current_date.weekday() >= 5
+                'is_weekend': current_date.weekday() >= 5,
+                'is_holiday': is_holiday,
+                'holiday_name': holiday_name
             }
             
             current_date += timedelta(days=1)
@@ -812,6 +845,7 @@ def generate_roster_logic(filepath: str, rules: dict) -> dict:
         raise Exception(f"Error generating roster: {str(e)}")
 
 @app.route('/generate-roster', methods=['POST'])
+@login_required
 def generate_roster():
     """Generate roster based on rules"""
     filename = request.form.get('filename')
@@ -860,6 +894,7 @@ def generate_roster():
         return redirect(url_for('configure_rules', filename=filename))
 
 @app.route('/roster')
+@login_required
 def view_roster():
     """View generated roster"""
     filename = request.args.get('filename')
@@ -889,6 +924,7 @@ def view_roster():
         return redirect(url_for('index'))
 
 @app.route('/export-roster')
+@login_required
 def export_roster():
     """Export roster to Excel format"""
     filename = request.args.get('filename')
@@ -962,5 +998,107 @@ def export_roster():
         flash(f'Error exporting roster: {str(e)}', 'error')
         return redirect(url_for('view_roster', filename=filename))
 
+# Create tables will be handled in run.py or during app initialization
+
+@app.context_processor
+def inject_user():
+    """Make current_user available in all templates"""
+    return dict(current_user=current_user)
+
+@app.route('/profiles')
+@login_required
+def list_profiles():
+    """List user's saved roster profiles"""
+    profiles = current_user.roster_profiles.filter_by(is_active=True).order_by(
+        RosterProfile.updated_at.desc()
+    ).all()
+    return render_template('profiles/list.html', profiles=profiles)
+
+@app.route('/profiles/save', methods=['POST'])
+@login_required
+def save_profile():
+    """Save current roster configuration as a profile"""
+    form = ProfileForm()
+    if form.validate_on_submit():
+        try:
+            # Get rules from form or session
+            rules = request.get_json() or session.get('current_rules', {})
+            
+            profile = RosterProfile(
+                user_id=current_user.id,
+                name=form.name.data,
+                description=form.description.data,
+                rules=rules
+            )
+            
+            db.session.add(profile)
+            db.session.commit()
+            
+            flash('Profile saved successfully!', 'success')
+            return jsonify({'success': True, 'profile_id': profile.id})
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f'Error saving profile: {str(e)}')
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    return jsonify({'success': False, 'errors': form.errors}), 400
+
+@app.route('/profiles/<int:profile_id>/share', methods=['POST'])
+@login_required
+def share_profile(profile_id):
+    """Share a roster profile via email"""
+    profile = RosterProfile.query.filter_by(
+        id=profile_id, 
+        user_id=current_user.id,
+        is_active=True
+    ).first_or_404()
+    
+    form = ShareProfileForm()
+    if form.validate_on_submit():
+        try:
+            # Create share record
+            from models import SharedProfile
+            share = SharedProfile(
+                profile_id=profile.id,
+                shared_with_email=form.email.data.lower()
+            )
+            db.session.add(share)
+            db.session.commit()
+            
+            # TODO: Send email with share link
+            share_url = url_for('view_shared_profile', token=share.token, _external=True)
+            
+            flash(f'Profile shared with {form.email.data}', 'success')
+            return redirect(url_for('list_profiles'))
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f'Error sharing profile: {str(e)}')
+            flash('Error sharing profile. Please try again.', 'error')
+    
+    return render_template('profiles/share.html', profile=profile, form=form)
+
+@app.route('/shared/<token>')
+def view_shared_profile(token):
+    """View a shared profile"""
+    from models import SharedProfile
+    
+    share = SharedProfile.query.filter_by(token=token, is_active=True).first_or_404()
+    
+    if share.is_expired:
+        flash('This share link has expired.', 'error')
+        return redirect(url_for('index'))
+    
+    # Update access time
+    share.accessed_at = datetime.utcnow()
+    db.session.commit()
+    
+    return render_template('profiles/shared_view.html', 
+                         profile=share.profile,
+                         share=share)
+
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()  # Create tables if they don't exist
     app.run(debug=True, port=5000)

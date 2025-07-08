@@ -1,7 +1,15 @@
 {% extends "base.html" %}
 
+{% block title %}Roster - Clinical Roster Builder{% endblock %}
+
 {% block content %}
-<h2>Generated Roster</h2>
+<div class="roster-header">
+    <h2>Generated Roster</h2>
+    <div class="roster-actions">
+        <button onclick="saveProfile()" class="btn btn-secondary">Save as Profile</button>
+        <a href="{{ url_for('export_roster', filename=filename) }}" class="btn btn-primary">Export to Excel</a>
+    </div>
+</div>
 
 {% if rules %}
 <div style="background: #f5f5f5; padding: 15px; margin-bottom: 20px; border-radius: 5px;">

@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+
+{% block title %}Register - Clinical Roster Builder{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <h2 class="auth-title">Create Account</h2>
+        <p class="auth-subtitle">Join Clinical Roster Builder to streamline your scheduling</p>
+        
+        <form method="POST" action="{{ url_for('auth.register') }}" class="auth-form">
+            {{ form.hidden_tag() }}
+            
+            <div class="form-group">
+                {{ form.email.label(class="form-label") }}
+                {{ form.email(class="form-control", placeholder="your@email.com", autofocus=true) }}
+                {% if form.email.errors %}
+                    <div class="form-error">{{ form.email.errors[0] }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                {{ form.password.label(class="form-label") }}
+                {{ form.password(class="form-control", placeholder="Create a strong password") }}
+                {% if form.password.errors %}
+                    <div class="form-error">{{ form.password.errors[0] }}</div>
+                {% endif %}
+                <div class="form-help">Must be at least 8 characters long</div>
+            </div>
+            
+            <div class="form-group">
+                {{ form.confirm_password.label(class="form-label") }}
+                {{ form.confirm_password(class="form-control", placeholder="Confirm your password") }}
+                {% if form.confirm_password.errors %}
+                    <div class="form-error">{{ form.confirm_password.errors[0] }}</div>
+                {% endif %}
+            </div>
+            
+            <button type="submit" class="btn btn-primary btn-block">Create Account</button>
+        </form>
+        
+        <div class="auth-links">
+            <p>Already have an account? <a href="{{ url_for('auth.login') }}">Sign in</a></p>
+        </div>
+    </div>
+</div>
+
+<style>
+.form-help {
+    font-size: 0.875rem;
+    color: var(--text-tertiary);
+    margin-top: var(--space-xs);
+}
+</style>
+{% endblock %}

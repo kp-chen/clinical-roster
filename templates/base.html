@@ -21,6 +21,20 @@
                     </svg>
                     <h1>Clinical Roster Builder</h1>
                 </a>
+                
+                <nav class="header-nav">
+                    {% if current_user.is_authenticated %}
+                        <a href="{{ url_for('list_profiles') }}" class="nav-link">My Profiles</a>
+                        <a href="{{ url_for('upload_leave') }}" class="nav-link">New Roster</a>
+                        <div class="user-menu">
+                            <span class="user-email">{{ current_user.email }}</span>
+                            <a href="{{ url_for('auth.logout') }}" class="nav-link logout">Logout</a>
+                        </div>
+                    {% else %}
+                        <a href="{{ url_for('auth.login') }}" class="nav-link">Login</a>
+                        <a href="{{ url_for('auth.register') }}" class="btn btn-primary btn-sm">Sign Up</a>
+                    {% endif %}
+                </nav>
             </div>
         </header>
 

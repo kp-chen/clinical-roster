@@ -1,0 +1,541 @@
+{% extends "base.html" %}
+
+{% block title %}Roster - Clinical Roster Builder{% endblock %}
+
+{% block content %}
+<div class="roster-container">
+    <div class="roster-header">
+        <h1 class="page-title">Generated Roster</h1>
+        <div class="roster-actions">
+            <button onclick="saveProfile()" class="btn btn-secondary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+                Save as Profile
+            </button>
+            <a href="{{ url_for('export_roster', filename=filename) }}" class="btn btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Export to Excel
+            </a>
+        </div>
+    </div>
+
+    <!-- Configuration Summary -->
+    <div class="summary-grid">
+        <div class="summary-card">
+            <h3>Configuration</h3>
+            <div class="summary-content">
+                <div class="summary-item">
+                    <span class="label">Period:</span>
+                    <span class="value">{{ rules.roster_start }} to {{ rules.roster_end }}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">Min Staff/Day:</span>
+                    <span class="value">{{ rules.min_staff_per_day }}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">Total Staff:</span>
+                    <span class="value">{{ staff_list|length }}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">Specialties:</span>
+                    <span class="value">{{ specialties|length }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="summary-card stats-card">
+            <h3>Statistics</h3>
+            <div class="summary-content">
+                <div class="stat-item">
+                    <div class="stat-value">{{ "%.1f"|format(stats.coverage_percentage) }}%</div>
+                    <div class="stat-label">Coverage Rate</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ stats.days_understaffed }}</div>
+                    <div class="stat-label">Days Understaffed</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Calendar View -->
+    <div class="calendar-container">
+        <h3>Monthly Calendar View</h3>
+        <div class="calendar-grid">
+            {% for date in sorted_dates %}
+            {% set day_data = roster[date] %}
+            {% set date_obj = date|datetime %}
+            <div class="calendar-day {% if day_data.is_weekend %}weekend{% endif %} {% if day_data.is_holiday %}holiday{% endif %} {% if day_data.staff|length < rules.min_staff_per_day %}understaffed{% endif %}">
+                <div class="day-header">
+                    <span class="day-number">{{ date_obj.strftime('%-d') }}</span>
+                    <span class="day-name">{{ date_obj.strftime('%a') }}</span>
+                    {% if day_data.is_holiday %}
+                    <span class="holiday-badge" title="{{ day_data.holiday_name }}">PH</span>
+                    {% endif %}
+                </div>
+                <div class="day-content">
+                    {% if day_data.staff %}
+                        <div class="staff-count">{{ day_data.staff|length }} staff</div>
+                        <div class="staff-list">
+                            {% for staff in day_data.staff[:3] %}
+                            <div class="staff-name">{{ staff }}</div>
+                            {% endfor %}
+                            {% if day_data.staff|length > 3 %}
+                            <div class="staff-more">+{{ day_data.staff|length - 3 }} more</div>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="no-staff">No staff</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Detailed Table View -->
+    <div class="table-container">
+        <h3>Detailed Roster Table</h3>
+        <table class="roster-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Day</th>
+                    <th>Type</th>
+                    <th>Assigned Staff</th>
+                    <th>Specialties Covered</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for date in sorted_dates %}
+                {% set day_data = roster[date] %}
+                {% set date_obj = date|datetime %}
+                <tr class="{% if day_data.is_weekend %}weekend-row{% endif %} {% if day_data.is_holiday %}holiday-row{% endif %}">
+                    <td>{{ date }}</td>
+                    <td>{{ date_obj.strftime('%A') }}</td>
+                    <td>
+                        {% if day_data.is_holiday %}
+                            <span class="badge badge-holiday">{{ day_data.holiday_name }}</span>
+                        {% elif day_data.is_weekend %}
+                            <span class="badge badge-weekend">Weekend</span>
+                        {% else %}
+                            <span class="badge badge-weekday">Weekday</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if day_data.staff %}
+                            {{ day_data.staff|join(', ') }}
+                        {% else %}
+                            <span class="text-danger">No staff assigned</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if day_data.specialties %}
+                            {{ day_data.specialties|join(', ') }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if day_data.staff|length >= rules.min_staff_per_day %}
+                            <span class="status-ok">✓ Adequate</span>
+                        {% else %}
+                            <span class="status-warning">⚠ Understaffed</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Staff Distribution -->
+    <div class="distribution-container">
+        <h3>Staff Work Distribution</h3>
+        <div class="distribution-grid">
+            {% for staff, days in stats.staff_work_distribution.items() %}
+            <div class="distribution-item">
+                <div class="staff-info">
+                    <div class="staff-name">{{ staff }}</div>
+                    <div class="work-days">{{ days }} days</div>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {{ (days / stats.total_days * 100) }}%"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<style>
+.roster-container {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.roster-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-2xl);
+}
+
+.page-title {
+    font-size: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+}
+
+.roster-actions {
+    display: flex;
+    gap: var(--space-md);
+}
+
+.roster-actions .btn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+/* Summary Cards */
+.summary-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: var(--space-lg);
+    margin-bottom: var(--space-2xl);
+}
+
+.summary-card {
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-xl);
+}
+
+.summary-card h3 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: var(--space-lg);
+}
+
+.summary-item {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.summary-item:last-child {
+    border-bottom: none;
+}
+
+.summary-item .label {
+    color: var(--text-secondary);
+}
+
+.summary-item .value {
+    font-weight: 500;
+}
+
+/* Stats Card */
+.stats-card .summary-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+}
+
+.stat-item {
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 600;
+    color: var(--primary-orange);
+}
+
+.stat-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+/* Calendar View */
+.calendar-container {
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-xl);
+    margin-bottom: var(--space-2xl);
+}
+
+.calendar-container h3 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: var(--space-lg);
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: var(--space-sm);
+}
+
+.calendar-day {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-sm);
+    min-height: 100px;
+    background: var(--surface);
+    transition: all 0.2s ease;
+}
+
+.calendar-day:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
+}
+
+.calendar-day.weekend {
+    background: #FEF3C7;
+}
+
+.calendar-day.holiday {
+    background: #DBEAFE;
+}
+
+.calendar-day.understaffed {
+    border-color: var(--error);
+}
+
+.day-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    margin-bottom: var(--space-sm);
+    font-size: 0.875rem;
+}
+
+.day-number {
+    font-weight: 600;
+}
+
+.day-name {
+    color: var(--text-secondary);
+}
+
+.holiday-badge {
+    background: var(--primary-orange);
+    color: white;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.day-content {
+    font-size: 0.813rem;
+}
+
+.staff-count {
+    font-weight: 500;
+    margin-bottom: var(--space-xs);
+}
+
+.staff-name {
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.staff-more {
+    color: var(--text-tertiary);
+    font-style: italic;
+}
+
+.no-staff {
+    color: var(--error);
+    font-weight: 500;
+}
+
+/* Table View */
+.table-container {
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-xl);
+    margin-bottom: var(--space-2xl);
+    overflow-x: auto;
+}
+
+.table-container h3 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: var(--space-lg);
+}
+
+.roster-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.roster-table th {
+    text-align: left;
+    font-weight: 600;
+    padding: var(--space-sm) var(--space-md);
+    background: var(--surface);
+    border-bottom: 2px solid var(--border);
+}
+
+.roster-table td {
+    padding: var(--space-sm) var(--space-md);
+    border-bottom: 1px solid var(--border);
+}
+
+.roster-table tr:hover {
+    background: var(--surface);
+}
+
+.weekend-row {
+    background: #FFFBEB;
+}
+
+.holiday-row {
+    background: #EFF6FF;
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+    font-size: 0.813rem;
+    font-weight: 500;
+}
+
+.badge-holiday {
+    background: var(--primary-orange);
+    color: white;
+}
+
+.badge-weekend {
+    background: #FCD34D;
+    color: #78350F;
+}
+
+.badge-weekday {
+    background: var(--surface);
+    color: var(--text-secondary);
+}
+
+/* Status */
+.status-ok {
+    color: var(--success);
+    font-weight: 500;
+}
+
+.status-warning {
+    color: var(--error);
+    font-weight: 500;
+}
+
+/* Distribution */
+.distribution-container {
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-xl);
+}
+
+.distribution-container h3 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: var(--space-lg);
+}
+
+.distribution-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: var(--space-lg);
+}
+
+.distribution-item {
+    background: var(--surface);
+    padding: var(--space-md);
+    border-radius: var(--radius-md);
+}
+
+.staff-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: var(--space-sm);
+}
+
+.work-days {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.progress-bar {
+    height: 8px;
+    background: var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--primary-orange);
+    transition: width 0.3s ease;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .roster-header {
+        flex-direction: column;
+        align-items: start;
+        gap: var(--space-lg);
+    }
+    
+    .summary-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .calendar-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+</style>
+
+<script>
+function saveProfile() {
+    // TODO: Implement save profile modal
+    const profileName = prompt('Enter a name for this roster profile:');
+    if (profileName) {
+        fetch('/profiles/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                name: profileName,
+                rules: {{ rules|tojson }}
+            })
+        }).then(response => {
+            if (response.ok) {
+                alert('Profile saved successfully!');
+            }
+        });
+    }
+}
+</script>
+{% endblock %}
